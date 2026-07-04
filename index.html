@@ -1194,6 +1194,256 @@
       z-index: 90;
     }
 
+
+    /* v27: верхние кнопки, растянутый график, узкая/скрываемая панель качества */
+    main {
+      grid-template-rows: auto auto minmax(0, 1fr) !important;
+      min-height: 0;
+      height: 100%;
+    }
+
+    .topActionBar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 9px 10px;
+      min-width: 0;
+    }
+
+    .topActionText {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      min-width: 0;
+    }
+
+    .topActionText strong {
+      font-size: 13px;
+      line-height: 1.1;
+    }
+
+    .topActionText span {
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.2;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 720px;
+    }
+
+    .topActionButtons {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 8px;
+      flex: 0 0 auto;
+    }
+
+    .topActionButtons .btn {
+      width: auto;
+      white-space: nowrap;
+      padding-left: 11px;
+      padding-right: 11px;
+      font-size: 12px;
+    }
+
+    .mainGrid {
+      grid-template-columns: minmax(0, 1fr) 270px !important;
+      align-items: stretch;
+      min-height: 0;
+      height: 100%;
+      margin-bottom: 0;
+    }
+
+    body.qualityCollapsed .mainGrid {
+      grid-template-columns: minmax(0, 1fr) 58px !important;
+    }
+
+    .chartCard {
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr) auto auto;
+      min-height: 0;
+      height: 100%;
+    }
+
+    .chartCard .chartBox {
+      height: auto !important;
+      min-height: 0;
+    }
+
+    .qualityCard {
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+      min-width: 0;
+      overflow: hidden;
+      height: 100%;
+    }
+
+    .qualityTitleRow {
+      margin-bottom: 6px;
+      gap: 6px;
+      align-items: center;
+    }
+
+    .qualityTitleRow h2 {
+      margin: 0;
+      font-size: 15px;
+      white-space: nowrap;
+    }
+
+    .qualityToggleBtn {
+      width: auto;
+      padding: 6px 8px;
+      font-size: 11px;
+      margin-left: auto;
+    }
+
+    .qualityBody {
+      min-height: 0;
+      overflow: auto;
+      padding-right: 2px;
+    }
+
+    .qualityCard .qualityRow {
+      gap: 8px;
+      font-size: 11px;
+      padding: 6px 0;
+    }
+
+    .qualityCard .status {
+      font-size: 11px;
+      padding: 7px 8px;
+    }
+
+    .qualityCard .balanceSummary {
+      grid-template-columns: 1fr;
+      gap: 6px;
+      margin-top: 7px;
+    }
+
+    .qualityCard .summaryTile {
+      padding: 7px;
+    }
+
+    .qualityCard .summaryTile .summaryValue {
+      font-size: 15px;
+    }
+
+    body.qualityCollapsed .qualityCard {
+      padding: 8px 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    body.qualityCollapsed .qualityCard .qualityBody {
+      display: none;
+    }
+
+    body.qualityCollapsed .qualityTitleRow {
+      margin: 0;
+      height: 100%;
+      flex-direction: column;
+      justify-content: center;
+    }
+
+    body.qualityCollapsed .qualityTitleRow h2 {
+      writing-mode: vertical-rl;
+      transform: rotate(180deg);
+      font-size: 12px;
+      letter-spacing: 0.02em;
+    }
+
+    body.qualityCollapsed .qualityToggleBtn {
+      writing-mode: vertical-rl;
+      transform: rotate(180deg);
+      padding: 8px 5px;
+      min-height: 64px;
+      margin: 8px 0 0;
+    }
+
+    /* В обычном режиме таблица не занимает место и не перекрывает график */
+    .tableCard:not(.isFullscreen) {
+      display: none !important;
+    }
+
+    .tableCard.isFullscreen {
+      display: grid !important;
+    }
+
+    .tableCard.isFullscreen .tableTools {
+      margin-left: auto;
+    }
+
+    .tableCard.isFullscreen .tableTitleRow {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .tableCard.isFullscreen .tableTitleRow h2 {
+      margin: 0;
+    }
+
+    .tableCard.isFullscreen {
+      top: 12px !important;
+      left: 12px !important;
+      right: 12px !important;
+      bottom: 12px !important;
+      inset: 12px 12px 12px 12px !important;
+      z-index: 90;
+    }
+
+    .tableCard.isFullscreen .tableWrap {
+      height: auto !important;
+      max-height: none !important;
+      min-height: 0;
+    }
+
+    @media (max-width: 1180px) {
+      main {
+        height: auto;
+      }
+
+      .topActionBar {
+        flex-direction: column;
+        align-items: stretch;
+      }
+
+      .topActionText span {
+        white-space: normal;
+        max-width: none;
+      }
+
+      .topActionButtons {
+        justify-content: flex-start;
+        flex-wrap: wrap;
+      }
+
+      .mainGrid,
+      body.qualityCollapsed .mainGrid {
+        grid-template-columns: 1fr !important;
+      }
+
+      body.qualityCollapsed .qualityCard {
+        display: grid;
+        padding: 10px;
+      }
+
+      body.qualityCollapsed .qualityTitleRow h2,
+      body.qualityCollapsed .qualityToggleBtn {
+        writing-mode: horizontal-tb;
+        transform: none;
+        min-height: 0;
+      }
+    }
+
   </style>
 </head>
 <body>
@@ -1263,6 +1513,18 @@
       </aside>
 
       <main>
+        <section class="topActionBar">
+          <div class="topActionText">
+            <strong>План заказа поставщику</strong>
+            <span>Откройте таблицу-заявку, выгрузите CSV или сформируйте PDF только по строкам «К ЗАКАЗУ».</span>
+          </div>
+          <div class="topActionButtons">
+            <button class="btn btnSecondary tableOpenBtn" id="tableFullscreenBtn" type="button" title="Открыть таблицу снизу до верха" aria-label="Открыть таблицу снизу до верха">Открыть таблицу</button>
+            <button class="btn btnSecondary exportBtn" id="exportOrderBtn" type="button" disabled title="Выгружаются только строки со статусом К ЗАКАЗУ">Скачать заказ CSV</button>
+            <button class="btn btnSecondary pdfBtn" id="pdfOrderBtn" type="button" disabled title="PDF формируется только по строкам со статусом К ЗАКАЗУ">Сформировать PDF заказа</button>
+          </div>
+        </section>
+
         <section class="kpiGrid">
           <div class="kpi">
             <div class="label">Факт спроса, шт.</div>
@@ -1364,8 +1626,12 @@
             <div id="chartInsight" class="chartInsight">В режиме остатков синяя линия показывает управляемый фактический остаток модели: выше/ниже цели в зависимости от отклонения фактического спроса от прогноза. После последней фактической даты добавляется прогноз на 30 дней.</div>
           </div>
 
-          <div class="card">
-            <h2>Качество модели</h2>
+          <div class="card qualityCard" id="qualityCard">
+            <div class="cardTitleRow qualityTitleRow">
+              <h2>Качество модели</h2>
+              <button class="btn btnSecondary qualityToggleBtn" id="qualityToggleBtn" type="button" title="Скрыть или открыть блок качества">Скрыть</button>
+            </div>
+            <div class="qualityBody" id="qualityBody">
             <div class="modelBox">
               <div class="qualityRow"><span>MAE ARIMA, шт.</span><span id="qMae">—</span></div>
               <div class="qualityRow"><span>RMSE ARIMA, шт.</span><span id="qRmse">—</span></div>
@@ -1393,6 +1659,7 @@
               </div>
             </div>
             <div id="businessComment" class="status">Система рассчитывает заказ по правилу: не более 30 дней запаса, заказ только при снижении к минимальной границе с учётом срока поставки.</div>
+            </div>
           </div>
         </section>
 
@@ -1400,10 +1667,7 @@
           <div class="cardTitleRow tableTitleRow">
             <h2>Заявка поставщику: дата, точка, SKU и количество к заказу</h2>
             <div class="tableTools">
-              <span class="resizeHint">Таблица не перекрывает график. Откройте её отдельным выезжающим окном.</span>
-              <button class="btn btnSecondary tableOpenBtn" id="tableFullscreenBtn" type="button" title="Открыть таблицу снизу до верха" aria-label="Открыть таблицу снизу до верха">Открыть таблицу</button>
-              <button class="btn btnSecondary exportBtn" id="exportOrderBtn" type="button" disabled title="Выгружаются только строки со статусом К ЗАКАЗУ">Скачать заказ CSV</button>
-              <button class="btn btnSecondary pdfBtn" id="pdfOrderBtn" type="button" disabled title="PDF формируется только по строкам со статусом К ЗАКАЗУ">Сформировать PDF заказа</button>
+              <button class="btn btnSecondary" id="tableDrawerCloseBtn" type="button" title="Закрыть таблицу">Закрыть таблицу</button>
             </div>
           </div>
           <div class="tableResizeHandle" id="tableResizeHandle" aria-hidden="true"></div>
@@ -2489,9 +2753,12 @@
   const chartSubtitle = document.getElementById("chartSubtitle");
   const tableCard = document.getElementById("tableCard");
   const tableFullscreenBtn = document.getElementById("tableFullscreenBtn");
+  const tableDrawerCloseBtn = document.getElementById("tableDrawerCloseBtn");
   const tableResizeHandle = document.getElementById("tableResizeHandle");
   const exportOrderBtn = document.getElementById("exportOrderBtn");
   const pdfOrderBtn = document.getElementById("pdfOrderBtn");
+  const qualityCard = document.getElementById("qualityCard");
+  const qualityToggleBtn = document.getElementById("qualityToggleBtn");
   const mainEl = document.querySelector("main");
   const fsSupplierFilter = document.getElementById("fsSupplierFilter");
   const fsSkuFilter = document.getElementById("fsSkuFilter");
@@ -2749,6 +3016,7 @@
       tableCard.classList.remove("isFullscreen");
       document.body.classList.remove("tableFullscreen");
       tableFullscreenBtn.textContent = "Открыть таблицу";
+      tableFullscreenBtn.disabled = false;
       tableFullscreenBtn.title = "Открыть таблицу снизу до верха";
       tableFullscreenBtn.setAttribute("aria-label", tableFullscreenBtn.title);
     }
@@ -2779,13 +3047,27 @@
     }
     if (active) {
       clearTableResizeOverlay();
-      tableCard.scrollIntoView({ block: "end", behavior: "smooth" });
     }
     tableCard.classList.toggle("isFullscreen", active);
     document.body.classList.toggle("tableFullscreen", active);
-    tableFullscreenBtn.textContent = active ? "Закрыть таблицу" : "Открыть таблицу";
-    tableFullscreenBtn.title = active ? "Закрыть выезжающую таблицу" : "Открыть таблицу снизу до верха";
+    tableFullscreenBtn.textContent = active ? "Таблица открыта" : "Открыть таблицу";
+    tableFullscreenBtn.disabled = active;
+    tableFullscreenBtn.title = active ? "Таблица уже открыта" : "Открыть таблицу снизу до верха";
     tableFullscreenBtn.setAttribute("aria-label", tableFullscreenBtn.title);
+  }
+
+  function setQualityCollapsed(active) {
+    document.body.classList.toggle("qualityCollapsed", active);
+    if (qualityCard) qualityCard.classList.toggle("isCollapsed", active);
+    if (qualityToggleBtn) {
+      qualityToggleBtn.textContent = active ? "Открыть" : "Скрыть";
+      qualityToggleBtn.title = active ? "Открыть блок качества модели" : "Скрыть блок качества модели";
+      qualityToggleBtn.setAttribute("aria-label", qualityToggleBtn.title);
+    }
+    if (lastResult) {
+      window.setTimeout(() => drawChart(lastResult.chart), 80);
+      window.setTimeout(() => drawChart(lastResult.chart), 240);
+    }
   }
 
   let tableResizeState = null;
@@ -3367,8 +3649,20 @@
   });
 
   tableFullscreenBtn.addEventListener("click", () => {
-    setTableFullscreen(!tableCard.classList.contains("isFullscreen"));
+    setTableFullscreen(true);
   });
+
+  if (tableDrawerCloseBtn) {
+    tableDrawerCloseBtn.addEventListener("click", () => {
+      setTableFullscreen(false);
+    });
+  }
+
+  if (qualityToggleBtn) {
+    qualityToggleBtn.addEventListener("click", () => {
+      setQualityCollapsed(!document.body.classList.contains("qualityCollapsed"));
+    });
+  }
 
   fsApplyBtn.addEventListener("click", () => {
     syncMainFiltersFromFullscreen();
