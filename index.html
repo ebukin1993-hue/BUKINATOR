@@ -1127,8 +1127,9 @@
           <strong>Загрузите TXT / TSV файл продаж</strong>
           <input id="fileInput" type="file" accept=".txt,.tsv,.csv" />
           <button class="btn btnSecondary" id="demoBtn">Выбрать файл продаж</button>
+          <button class="btn btnSecondary" id="downloadTemplateBtn" type="button">Скачать шаблон TXT</button>
           <div class="progressWrap"><div id="progress" class="progress"></div></div>
-          <div id="loadStatus" class="status">Нажмите «Выбрать файл продаж» и загрузите TXT/TSV. Подходит база на 730 000 строк.</div>
+          <div id="loadStatus" class="status">Нажмите «Выбрать файл продаж» и загрузите TXT/TSV. Чтобы проверить формат входных данных, скачайте шаблон TXT.</div>
         </div>
 
         <h3>Фильтры</h3>
@@ -2330,6 +2331,7 @@
 
   const fileInput = document.getElementById("fileInput");
   const demoBtn = document.getElementById("demoBtn");
+  const downloadTemplateBtn = document.getElementById("downloadTemplateBtn");
   const progress = document.getElementById("progress");
   const loadStatus = document.getElementById("loadStatus");
 
@@ -2657,6 +2659,176 @@
     loadStatus.className = "status" + (type ? " " + type : "");
   }
 
+
+  function buildInputTemplateTxt() {
+    const header = [
+      "date",
+      "store_id",
+      "store_name",
+      "region",
+      "location_type",
+      "sku",
+      "product_name",
+      "product_group",
+      "shelf_life_days",
+      "base_price_rub",
+      "actual_price_rub",
+      "purchase_price_rub",
+      "gross_margin_pct",
+      "promo_flag",
+      "promo_discount_pct",
+      "weekday",
+      "month",
+      "sales_units",
+      "sales_rub",
+      "stock_open_units",
+      "stock_close_units",
+      "lost_sales_units",
+      "demand_forecast_units",
+      "recommended_order_units",
+      "supplier_id",
+      "supplier_name",
+      "supplier_region",
+      "supplier_lead_time_days",
+      "supplier_reliability_pct",
+      "supplier_min_order_units",
+      "supplier_stock_available_units",
+      "alternative_supplier_id",
+      "alternative_supplier_name",
+      "delivery_location",
+      "is_stockout",
+      "is_holiday_period"
+    ];
+
+    const suppliers = [
+      { id: "SUP001", name: "Поставщик Молочная линия", region: "Москва", lead: 2, reliability: 97.5, minOrder: 24, available: 1200, altId: "SUP002", altName: "Поставщик Бакалея Опт" },
+      { id: "SUP002", name: "Поставщик Бакалея Опт", region: "МО", lead: 3, reliability: 96.2, minOrder: 30, available: 1600, altId: "SUP001", altName: "Поставщик Молочная линия" }
+    ];
+    const stores = [
+      { id: "M001", name: "Магазин Север", region: "Москва", type: "жилой район", factor: 1.10 },
+      { id: "M002", name: "Магазин Центр", region: "Москва", type: "центр города", factor: 1.35 }
+    ];
+    const products = [
+      { sku: "SKU001", name: "Молоко 2.5% 1л", group: "Молочная продукция", shelfLife: 7, price: 95, purchase: 66, baseDemand: 28, supplier: suppliers[0] },
+      { sku: "SKU002", name: "Йогурт питьевой 290г", group: "Молочная продукция", shelfLife: 14, price: 79, purchase: 54, baseDemand: 18, supplier: suppliers[0] },
+      { sku: "SKU003", name: "Гречка 900г", group: "Бакалея", shelfLife: 180, price: 145, purchase: 101, baseDemand: 12, supplier: suppliers[1] },
+      { sku: "SKU004", name: "Макароны 450г", group: "Бакалея", shelfLife: 365, price: 79, purchase: 55, baseDemand: 16, supplier: suppliers[1] }
+    ];
+
+    function pad2(v) { return String(v).padStart(2, "0"); }
+    function iso(d) { return d.getFullYear() + "-" + pad2(d.getMonth() + 1) + "-" + pad2(d.getDate()); }
+    function weekday(d) { const w = d.getDay(); return w === 0 ? 7 : w; }
+    function roundOrder(qty, pack) { return qty <= 0 ? 0 : Math.ceil(qty / pack) * pack; }
+
+    const stock = new Map();
+    for (const store of stores) {
+      for (const p of products) {
+        stock.set(store.id + "|" + p.sku, Math.round(p.baseDemand * store.factor * 7));
+      }
+    }
+
+    const rows = [];
+    const start = new Date("2026-01-01T00:00:00");
+    for (let day = 0; day < 21; day++) {
+      const d = new Date(start);
+      d.setDate(start.getDate() + day);
+      const dateStr = iso(d);
+      const isWeekend = weekday(d) >= 6;
+      const month = d.getMonth() + 1;
+      const holiday = month === 1 && d.getDate() <= 8 ? 1 : 0;
+
+      for (const store of stores) {
+        for (const p of products) {
+          const key = store.id + "|" + p.sku;
+          const s = p.supplier;
+          const promo = day % 9 === 0 ? 1 : 0;
+          const discount = promo ? 15 : 0;
+          const actualPrice = +(p.price * (1 - discount / 100)).toFixed(2);
+          const season = isWeekend ? 1.15 : 1.0;
+          const promoCoef = promo ? 1.20 : 1.0;
+          const expected = p.baseDemand * store.factor * season * promoCoef;
+          const salesUnits = Math.max(0, Math.round(expected + Math.sin(day + p.sku.charCodeAt(5)) * 3));
+          const stockOpen = stock.get(key);
+          const realSales = Math.min(stockOpen, salesUnits);
+          const lostSales = Math.max(0, salesUnits - stockOpen);
+          const forecast = Math.round(expected * (s.lead + 2));
+          const safety = Math.round(expected * (p.shelfLife <= 14 ? 2 : 4));
+          const rawOrder = Math.max(0, forecast + safety - (stockOpen - realSales));
+          const recommendedOrder = roundOrder(rawOrder, s.minOrder);
+          const stockClose = Math.max(0, stockOpen - realSales + (day % s.lead === 0 ? Math.round(recommendedOrder * 0.7) : 0));
+          stock.set(key, stockClose);
+          const salesRub = +(realSales * actualPrice).toFixed(2);
+          const marginPct = +(((actualPrice - p.purchase) / actualPrice) * 100).toFixed(1);
+
+          rows.push([
+            dateStr,
+            store.id,
+            store.name,
+            store.region,
+            store.type,
+            p.sku,
+            p.name,
+            p.group,
+            p.shelfLife,
+            p.price,
+            actualPrice,
+            p.purchase,
+            marginPct,
+            promo,
+            discount,
+            weekday(d),
+            month,
+            realSales,
+            salesRub,
+            stockOpen,
+            stockClose,
+            lostSales,
+            forecast,
+            recommendedOrder,
+            s.id,
+            s.name,
+            s.region,
+            s.lead,
+            s.reliability,
+            s.minOrder,
+            s.available,
+            s.altId,
+            s.altName,
+            "склад/магазин",
+            lostSales > 0 ? 1 : 0,
+            holiday
+          ]);
+        }
+      }
+    }
+
+    const commentLines = [
+      "# ШАБЛОН TXT/TSV ДЛЯ HTML-ДАШБОРДА АВТОЗАКАЗА",
+      "# Разделитель колонок: табуляция.",
+      "# Кодировка: UTF-8.",
+      "# Первая некомментированная строка должна быть строкой заголовков.",
+      "# Строки, которые начинаются с #, игнорируются при загрузке.",
+      "# Минимально важные поля для модели: date, store_id, store_name, sku, product_name, product_group, sales_units, sales_rub, stock_open_units, stock_close_units, lost_sales_units, supplier_id, supplier_name, supplier_lead_time_days, supplier_reliability_pct, supplier_min_order_units, supplier_stock_available_units.",
+      "# Ниже — пример данных, который можно сразу загрузить в HTML для проверки формата.",
+      "#"
+    ];
+
+    return commentLines.join("\n") + "\n" + header.join("\t") + "\n" + rows.map(r => r.join("\t")).join("\n") + "\n";
+  }
+
+  function downloadInputTemplateTxt() {
+    const txt = buildInputTemplateTxt();
+    const blob = new Blob([txt], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "auto_order_input_template.txt";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
   fileInput.addEventListener("change", () => {
     const file = fileInput.files && fileInput.files[0];
     if (!file) return;
@@ -2675,6 +2847,10 @@
   demoBtn.addEventListener("click", () => {
     fileInput.click();
   });
+
+  if (downloadTemplateBtn) {
+    downloadTemplateBtn.addEventListener("click", downloadInputTemplateTxt);
+  }
 
   applyBtn.addEventListener("click", requestAggregate);
 
