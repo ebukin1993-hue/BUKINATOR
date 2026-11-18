@@ -16,31 +16,33 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - uses: android-actions/setup-android@v3
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.10.2'
-      - name: Extract isolated Ballu Control source
+      - name: Install SDK packages
+        run: |
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+      - name: Extract Ballu Control source
         run: |
           mkdir -p ballu-control/project
           cd ballu-control/project
           base64 -d ../build-src-v0.2.tar.xz.b64 | tar -xJf -
           test -f app/build.gradle
-      - name: Install Android SDK
-        run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
-      - name: Build APK
+      - name: Build debug APK
         working-directory: ballu-control/project
         run: gradle :app:assembleDebug --stacktrace
-      - uses: actions/upload-artifact@v4
+      - name: Archive build
+        uses: actions/upload-artifact@v4
         with:
-          name: BalluControl-v0.2-apk
+          name: BalluControl-apk
           path: ballu-control/project/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
-      - name: Publish APK to this temporary branch
+      - name: Publish APK on build branch
         run: |
-          cp ballu-control/project/app/build/outputs/apk/debug/app-debug.apk ballu-control/BalluControl_v0.2.apk
+          cp ballu-control/project/app/build/outputs/apk/debug/app-debug.apk ballu-control/BalluControl.apk
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add ballu-control/BalluControl_v0.2.apk
-          git commit -m "Publish temporary Ballu Control v0.2 APK"
+          git add ballu-control/BalluControl.apk
+          git commit -m "Build Ballu Control APK" || exit 0
           git push origin HEAD:ballu-control-apk-build
