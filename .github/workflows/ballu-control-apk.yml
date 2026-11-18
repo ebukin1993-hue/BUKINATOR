@@ -2,6 +2,8 @@ name: Build Ballu Control APK
 on:
   push:
     branches: [ballu-control-apk-build]
+    paths-ignore:
+      - 'ballu-control/*.apk'
   workflow_dispatch:
 
 permissions:
@@ -19,30 +21,36 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.10.2'
-      - name: Install SDK packages
+      - name: Install Android SDK packages
+        shell: bash
         run: |
-          echo "ANDROID_HOME=$ANDROID_HOME"
-          sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
-      - name: Extract Ballu Control source
+          echo "Android SDK root: $ANDROID_HOME"
+          SDKMAN="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager -print -quit)"
+          test -n "$SDKMAN" || { echo "sdkmanager unavailable"; find "$ANDROID_HOME" -maxdepth 4 -type f | head -60; exit 1; }
+          echo "SDK manager: $SDKMAN"
+          yes | "$SDKMAN" --licenses >/dev/null || true
+          "$SDKMAN" "platforms;android-35" "build-tools;35.0.0"
+      - name: Extract Ballu Control v0.3 source
         run: |
           mkdir -p ballu-control/project
           cd ballu-control/project
-          base64 -d ../build-src-v0.2.tar.xz.b64 | tar -xJf -
+          base64 -d ../build-src-v0.3.tar.xz.b64 | tar -xJf -
           test -f app/build.gradle
+          test -f app/src/main/java/com/ballucontrol/local/AirflowView.java
       - name: Build debug APK
         working-directory: ballu-control/project
-        run: gradle :app:assembleDebug --stacktrace
-      - name: Archive build
+        run: gradle :app:assembleDebug --stacktrace --no-daemon
+      - name: Archive APK
         uses: actions/upload-artifact@v4
         with:
-          name: BalluControl-apk
+          name: BalluControl-v0.3-APK
           path: ballu-control/project/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
       - name: Publish APK on build branch
         run: |
-          cp ballu-control/project/app/build/outputs/apk/debug/app-debug.apk ballu-control/BalluControl.apk
+          cp ballu-control/project/app/build/outputs/apk/debug/app-debug.apk ballu-control/BalluControl_v0.3.apk
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add ballu-control/BalluControl.apk
-          git commit -m "Build Ballu Control APK" || exit 0
+          git add ballu-control/BalluControl_v0.3.apk
+          git commit -m "Publish Ballu Control v0.3 APK" || exit 0
           git push origin HEAD:ballu-control-apk-build
