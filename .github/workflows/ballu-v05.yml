@@ -1,0 +1,62 @@
+name: Build Ballu Control v0.5 HOMMYN Import APK
+on:
+  push:
+    branches: [ballu-control-apk-build]
+    paths:
+      - '.github/workflows/ballu-v05.yml'
+      - 'ballu-control/build-src-v0.5.tar.xz.b64'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  android-apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+      - name: Install SDK components
+        shell: bash
+        run: |
+          SDKMAN="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager -print -quit)"
+          test -n "$SDKMAN"
+          yes | "$SDKMAN" --licenses >/dev/null || true
+          "$SDKMAN" 'platforms;android-35' 'build-tools;35.0.0'
+      - name: Extract Ballu Control v0.5
+        shell: bash
+        run: |
+          mkdir -p ballu-control/project
+          cd ballu-control/project
+          base64 -d ../build-src-v0.5.tar.xz.b64 | tar -xJf -
+          test -f app/src/main/java/com/ballucontrol/local/ShareTokenParser.java
+      - name: Verify protocol and HOMMYN share link parser
+        shell: bash
+        working-directory: ballu-control/project
+        run: |
+          mkdir -p /tmp/ballu-v05-tests
+          javac -d /tmp/ballu-v05-tests \
+            app/src/main/java/com/ballucontrol/local/SyncleoCrypto.java \
+            app/src/main/java/com/ballucontrol/local/SyncleoSession.java \
+            app/src/main/java/com/ballucontrol/local/BreezerState.java \
+            app/src/main/java/com/ballucontrol/local/Co2Policy.java \
+            app/src/main/java/com/ballucontrol/local/ShareTokenParser.java \
+            app/src/test/java/com/ballucontrol/local/ProtocolSmokeTest.java \
+            app/src/test/java/com/ballucontrol/local/ShareTokenParserTest.java
+          java -ea -cp /tmp/ballu-v05-tests com.ballucontrol.local.ProtocolSmokeTest
+          java -ea -cp /tmp/ballu-v05-tests com.ballucontrol.local.ShareTokenParserTest
+      - name: Assemble debug APK
+        working-directory: ballu-control/project
+        run: gradle :app:assembleDebug --stacktrace --no-daemon
+      - name: Upload signed debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: BalluControl-v0.5-hommyn-import-apk
+          path: ballu-control/project/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
