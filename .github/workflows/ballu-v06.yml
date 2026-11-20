@@ -1,0 +1,61 @@
+name: Build Ballu Control 0.6 Fast UI APK
+on:
+  push:
+    branches: [ballu-control-apk-build]
+    paths:
+      - 'ballu-control/build-src-v0.6.tar.xz.b64'
+      - '.github/workflows/ballu-v06.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+      - name: Install Android SDK
+        shell: bash
+        run: |
+          SDKMAN="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager -print -quit)"
+          test -n "$SDKMAN" || exit 1
+          yes | "$SDKMAN" --licenses >/dev/null || true
+          "$SDKMAN" "platforms;android-35" "build-tools;35.0.0"
+      - name: Extract source
+        run: |
+          mkdir -p ballu-control/v06-project
+          cd ballu-control/v06-project
+          base64 -d ../build-src-v0.6.tar.xz.b64 | tar -xJf -
+          test -f app/src/main/java/com/ballucontrol/local/MainActivity.java
+          grep -q "versionCode 6" app/build.gradle
+      - name: Check protocol regression tests
+        working-directory: ballu-control/v06-project
+        run: |
+          mkdir -p /tmp/ballu-unit-tests
+          javac -d /tmp/ballu-unit-tests \
+            app/src/main/java/com/ballucontrol/local/SyncleoCrypto.java \
+            app/src/main/java/com/ballucontrol/local/SyncleoSession.java \
+            app/src/main/java/com/ballucontrol/local/BreezerState.java \
+            app/src/main/java/com/ballucontrol/local/Co2Policy.java \
+            app/src/main/java/com/ballucontrol/local/ShareTokenParser.java \
+            app/src/test/java/com/ballucontrol/local/ProtocolSmokeTest.java \
+            app/src/test/java/com/ballucontrol/local/ShareTokenParserTest.java
+          java -ea -cp /tmp/ballu-unit-tests com.ballucontrol.local.ProtocolSmokeTest
+          java -ea -cp /tmp/ballu-unit-tests com.ballucontrol.local.ShareTokenParserTest
+      - name: Compile Android APK
+        working-directory: ballu-control/v06-project
+        run: gradle :app:assembleDebug --stacktrace --no-daemon
+      - name: Upload installable APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: BalluControl-v0.6-Fast-APK
+          path: ballu-control/v06-project/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
