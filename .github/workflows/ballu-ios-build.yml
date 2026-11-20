@@ -42,6 +42,19 @@ jobs:
           xcodebuild -project BalluControl.xcodeproj -scheme BalluControl -configuration Debug \
             -destination 'generic/platform=iOS Simulator' -derivedDataPath build/SimDerived \
             CODE_SIGNING_ALLOWED=NO build
+      - name: Verify packaged iOS privacy and background settings
+        working-directory: ballu-ios/project
+        run: |
+          python3 - <<'PY'
+          import plistlib
+          with open("build/Derived/Build/Products/Debug-iphoneos/BalluControl.app/Info.plist","rb") as f:
+              data=plistlib.load(f)
+          assert "_syncleo._udp" in data.get("NSBonjourServices", []), data
+          assert data.get("NSLocalNetworkUsageDescription"), data
+          assert not data.get("UIBackgroundModes"), data
+          assert data.get("CFBundleDisplayName") == "Ballu Control", data
+          print("iOS permissions and background policy verified.")
+          PY
       - name: Assemble unsigned IPA and project ZIP
         working-directory: ballu-ios/project
         run: |
