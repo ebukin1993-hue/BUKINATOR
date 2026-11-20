@@ -1,0 +1,73 @@
+name: Build Ballu Home v0.9 Android
+on:
+  push:
+    branches: [ballu-control-apk-build]
+    paths:
+      - 'ballu-home/build-src-v0.9.tar.xz.b64'
+      - '.github/workflows/ballu-home-v09.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+      - name: Install Android SDK
+        shell: bash
+        run: |
+          SDKMAN="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager -print -quit)"
+          test -n "$SDKMAN"
+          yes | "$SDKMAN" --licenses >/dev/null || true
+          "$SDKMAN" "platforms;android-35" "build-tools;35.0.0"
+      - name: Extract release source
+        run: |
+          mkdir -p ballu-home/project
+          cd ballu-home/project
+          base64 -d ../build-src-v0.9.tar.xz.b64 | tar -xJf -
+          test -f app/src/main/java/com/ballucontrol/local/HistoryStore.java
+          test -f app/src/main/java/com/ballucontrol/local/HistoryChartView.java
+          grep -q "versionCode 9" app/build.gradle
+          grep -q "МОИ УСТРОЙСТВА" app/src/main/java/com/ballucontrol/local/MainActivity.java
+      - name: Verify protocol and token parsing
+        working-directory: ballu-home/project
+        run: |
+          mkdir -p /tmp/ballu-tests
+          javac -d /tmp/ballu-tests \
+            app/src/main/java/com/ballucontrol/local/SyncleoCrypto.java \
+            app/src/main/java/com/ballucontrol/local/SyncleoSession.java \
+            app/src/main/java/com/ballucontrol/local/BreezerState.java \
+            app/src/main/java/com/ballucontrol/local/Co2Policy.java \
+            app/src/main/java/com/ballucontrol/local/ShareTokenParser.java \
+            app/src/test/java/com/ballucontrol/local/ProtocolSmokeTest.java \
+            app/src/test/java/com/ballucontrol/local/ShareTokenParserTest.java
+          java -ea -cp /tmp/ballu-tests com.ballucontrol.local.ProtocolSmokeTest
+          java -ea -cp /tmp/ballu-tests com.ballucontrol.local.ShareTokenParserTest
+      - name: Assemble Android APK
+        working-directory: ballu-home/project
+        run: gradle :app:assembleDebug --stacktrace --no-daemon
+      - name: Verify APK package and manifest
+        shell: bash
+        run: |
+          APK=ballu-home/project/app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | head -15
+          unzip -tq "$APK" | tail -2
+          if "$ANDROID_HOME/build-tools/35.0.0/aapt" dump xmltree "$APK" AndroidManifest.xml | grep -E 'E: (service|receiver)'; then
+            echo "Unexpected background component"; exit 1
+          fi
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: BalluHome-v0.9-APK
+          path: ballu-home/project/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
