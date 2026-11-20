@@ -1,0 +1,60 @@
+name: Build Ballu Control iPhone SwiftUI
+on:
+  push:
+    branches: [ballu-control-apk-build]
+    paths:
+      - 'ballu-ios/ios-src-v1.tar.xz.b64'
+      - '.github/workflows/ballu-ios-build.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  iphone:
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup iOS build tools
+        run: |
+          xcodebuild -version
+          brew install xcodegen
+      - name: Unpack iPhone source
+        run: |
+          mkdir -p ballu-ios/project
+          python3 -c "import base64,pathlib; p=pathlib.Path('ballu-ios/ios-src-v1.tar.xz.b64'); pathlib.Path('ballu-ios/ios-src-v1.tar.xz').write_bytes(base64.b64decode(p.read_text().strip()))"
+          tar -xJf ballu-ios/ios-src-v1.tar.xz -C ballu-ios/project
+          test -f ballu-ios/project/BalluControl/Info.plist
+          test -f ballu-ios/project/BalluControl/SyncleoTransport.swift
+      - name: Generate iOS Xcode project
+        working-directory: ballu-ios/project
+        run: xcodegen generate
+      - name: Compile unsigned iPhone app
+        working-directory: ballu-ios/project
+        run: |
+          xcodebuild -project BalluControl.xcodeproj -scheme BalluControl -configuration Debug \
+            -destination 'generic/platform=iOS' -derivedDataPath build/Derived \
+            CODE_SIGNING_ALLOWED=NO build
+      - name: Compile simulator app for validation
+        working-directory: ballu-ios/project
+        run: |
+          xcodebuild -project BalluControl.xcodeproj -scheme BalluControl -configuration Debug \
+            -destination 'generic/platform=iOS Simulator' -derivedDataPath build/SimDerived \
+            CODE_SIGNING_ALLOWED=NO build
+      - name: Assemble unsigned IPA and project ZIP
+        working-directory: ballu-ios/project
+        run: |
+          mkdir -p build/unsigned/Payload
+          cp -R build/Derived/Build/Products/Debug-iphoneos/BalluControl.app build/unsigned/Payload/
+          cd build/unsigned && zip -qry ../BalluControl_unsigned.ipa Payload && cd ../..
+          zip -qry build/BalluControl_Xcode_Project.zip BalluControl.xcodeproj BalluControl project.yml README.md
+          ls -lh build/BalluControl_unsigned.ipa build/BalluControl_Xcode_Project.zip
+      - name: Save artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: BalluControl-iPhone-v1-unsigned
+          path: |
+            ballu-ios/project/build/BalluControl_unsigned.ipa
+            ballu-ios/project/build/BalluControl_Xcode_Project.zip
+          if-no-files-found: error
