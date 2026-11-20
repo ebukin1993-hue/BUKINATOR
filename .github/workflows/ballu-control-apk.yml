@@ -1,16 +1,17 @@
-name: Build Ballu Control APK
+name: Build Ballu Control Android16 Fixed APK
 on:
   push:
     branches: [ballu-control-apk-build]
-    paths-ignore:
-      - 'ballu-control/*.apk'
+    paths:
+      - '.github/workflows/ballu-control-apk.yml'
+      - 'ballu-hotfix/**'
   workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
-  build-apk:
+  android-apk:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -24,33 +25,45 @@ jobs:
       - name: Install Android SDK packages
         shell: bash
         run: |
-          echo "Android SDK root: $ANDROID_HOME"
           SDKMAN="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager -print -quit)"
-          test -n "$SDKMAN" || { echo "sdkmanager unavailable"; find "$ANDROID_HOME" -maxdepth 4 -type f | head -60; exit 1; }
-          echo "SDK manager: $SDKMAN"
+          test -n "$SDKMAN" || exit 1
           yes | "$SDKMAN" --licenses >/dev/null || true
-          "$SDKMAN" "platforms;android-35" "build-tools;35.0.0"
-      - name: Extract Ballu Control v0.3 source
+          "$SDKMAN" 'platforms;android-35' 'build-tools;35.0.0'
+      - name: Extract Ballu Control v0.3 baseline
+        shell: bash
         run: |
           mkdir -p ballu-control/project
           cd ballu-control/project
           base64 -d ../build-src-v0.3.tar.xz.b64 | tar -xJf -
-          test -f app/build.gradle
-          test -f app/src/main/java/com/ballucontrol/local/AirflowView.java
+      - name: Apply XDH Android 16 fix and version upgrade
+        run: python3 ballu-hotfix/apply_hotfix.py ballu-control/project control
+      - name: Run protocol and crypto regression tests
+        shell: bash
+        run: |
+          cd ballu-control/project
+          mkdir -p /tmp/ballu-testclasses
+          javac -d /tmp/ballu-testclasses \
+            app/src/main/java/com/ballucontrol/local/SyncleoCrypto.java \
+            app/src/main/java/com/ballucontrol/local/SyncleoSession.java \
+            app/src/main/java/com/ballucontrol/local/BreezerState.java \
+            app/src/main/java/com/ballucontrol/local/Co2Policy.java \
+            app/src/test/java/com/ballucontrol/local/ProtocolSmokeTest.java
+          java -ea -cp /tmp/ballu-testclasses com.ballucontrol.local.ProtocolSmokeTest
       - name: Build debug APK
         working-directory: ballu-control/project
         run: gradle :app:assembleDebug --stacktrace --no-daemon
-      - name: Archive APK
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: BalluControl-v0.3-APK
+          name: BalluControl-v0.4-Android16-APK
           path: ballu-control/project/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
-      - name: Publish APK on build branch
+      - name: Publish on temporary build branch
+        shell: bash
         run: |
-          cp ballu-control/project/app/build/outputs/apk/debug/app-debug.apk ballu-control/BalluControl_v0.3.apk
+          cp ballu-control/project/app/build/outputs/apk/debug/app-debug.apk ballu-control/BalluControl_v0.4.apk
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add ballu-control/BalluControl_v0.3.apk
-          git commit -m "Publish Ballu Control v0.3 APK" || exit 0
+          git add ballu-control/BalluControl_v0.4.apk
+          git commit -m "Publish Ballu Control v0.4 fixed APK" || exit 0
           git push origin HEAD:ballu-control-apk-build
