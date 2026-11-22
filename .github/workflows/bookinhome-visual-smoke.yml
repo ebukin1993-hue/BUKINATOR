@@ -1,0 +1,67 @@
+name: Smoke test BookinHome 1.1 on Android emulator
+on:
+  push:
+    branches: [bookinhome-visual-v11]
+    paths:
+      - '.github/workflows/bookinhome-visual-smoke.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+      - name: Prepare Android SDK
+        shell: bash
+        run: |
+          SDKMAN="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager -print -quit)"
+          test -n "$SDKMAN"
+          yes | "$SDKMAN" --licenses >/dev/null || true
+          "$SDKMAN" "platforms;android-35" "build-tools;35.0.0"
+          test -e /dev/kvm && sudo chmod 666 /dev/kvm || true
+      - name: Build BookinHome
+        shell: bash
+        run: |
+          mkdir -p bookinhome/smoke-project
+          cd bookinhome/smoke-project
+          base64 -d ../visual-v1.1-source.tar.xz.b64 | tar -xJf -
+          gradle :app:assembleDebug --no-daemon
+      - name: Launch and capture screen on emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          emulator-boot-timeout: 650
+          script: |
+            adb install -r bookinhome/smoke-project/app/build/outputs/apk/debug/app-debug.apk
+            adb shell am start -n com.ballucontrol.local/.MainActivity
+            sleep 9
+            adb shell pidof com.ballucontrol.local
+            mkdir -p bookinhome/smoke-captures
+            adb shell screencap -p /sdcard/bookinhome.png
+            adb pull /sdcard/bookinhome.png bookinhome/smoke-captures/screen.png
+            adb logcat -d -v brief > bookinhome/smoke-captures/logcat.txt
+            if grep -E "FATAL EXCEPTION|Process: com.ballucontrol.local.*crash|AndroidRuntime:.*com.ballucontrol.local" bookinhome/smoke-captures/logcat.txt; then
+              echo "App crash detected"; exit 1
+            fi
+      - name: Upload smoke screenshot
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: BookinHome-v1.1-runtime-screenshot
+          path: bookinhome/smoke-captures
+          if-no-files-found: warn
