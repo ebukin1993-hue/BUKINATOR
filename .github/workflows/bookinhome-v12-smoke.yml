@@ -1,0 +1,65 @@
+name: Runtime check BookinHome 1.2 Android navigation
+on:
+  push:
+    branches: [bookinhome-navigation-v12]
+    paths:
+      - '.github/workflows/bookinhome-v12-smoke.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 22
+    steps:
+      - uses: actions/checkout@v4
+      - name: Get signed Android APK
+        uses: actions/download-artifact@v4
+        with:
+          name: bookinhome-v1.2-APK
+          repository: ebukin1993-hue/BUKINATOR
+          run-id: 45046842496
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: built
+      - name: Install and navigate on Pixel 6 emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          emulator-boot-timeout: 650
+          script: |
+            mkdir -p screenshots
+            adb install -r built/app-debug.apk
+            adb shell am start -n com.ballucontrol.local/.MainActivity
+            sleep 13
+            adb shell pidof com.ballucontrol.local
+            adb shell screencap -p /sdcard/bookin_home.png
+            adb pull /sdcard/bookin_home.png screenshots/1-home.png
+            adb shell input tap 440 830
+            sleep 3
+            adb shell screencap -p /sdcard/bookin_device.png
+            adb pull /sdcard/bookin_device.png screenshots/2-device.png
+            adb shell input tap 525 2265
+            sleep 2
+            adb shell screencap -p /sdcard/bookin_stats.png
+            adb pull /sdcard/bookin_stats.png screenshots/3-statistics.png
+            adb shell input tap 865 2265
+            sleep 2
+            adb shell screencap -p /sdcard/bookin_settings.png
+            adb pull /sdcard/bookin_settings.png screenshots/4-settings.png
+            adb logcat -d -v brief > screenshots/logcat.txt
+            adb shell pidof com.ballucontrol.local
+            ! grep -q "FATAL EXCEPTION" screenshots/logcat.txt
+      - name: Upload QA captures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bookinhome-v12-device-navigation-screenshots
+          path: screenshots/
+          if-no-files-found: warn
