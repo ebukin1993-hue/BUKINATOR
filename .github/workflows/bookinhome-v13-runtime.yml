@@ -1,0 +1,60 @@
+name: Runtime QA BookinHome 1.3 signed APK
+on:
+  push:
+    branches: [bookinhome-design-v13]
+    paths:
+      - '.github/workflows/bookinhome-v13-runtime.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify signed APK exists
+        run: |
+          test -s downloads/bookinhome-1.3.apk
+          sha256sum downloads/bookinhome-1.3.apk
+      - name: Install and navigate BookinHome on Pixel Android
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          emulator-boot-timeout: 650
+          script: |
+            mkdir -p qa-v13
+            adb install -r downloads/bookinhome-1.3.apk
+            adb shell am start -n com.ballucontrol.local/.MainActivity
+            sleep 12
+            adb shell pidof com.ballucontrol.local
+            adb shell screencap -p /sdcard/home.png
+            adb pull /sdcard/home.png qa-v13/01-home.png
+            adb shell input tap 460 870
+            sleep 3
+            adb shell screencap -p /sdcard/ballu.png
+            adb pull /sdcard/ballu.png qa-v13/02-ballu.png
+            adb shell input tap 550 2250
+            sleep 3
+            adb shell screencap -p /sdcard/stats.png
+            adb pull /sdcard/stats.png qa-v13/03-stats.png
+            adb shell input tap 925 2250
+            sleep 3
+            adb shell screencap -p /sdcard/settings.png
+            adb pull /sdcard/settings.png qa-v13/04-settings.png
+            adb shell pidof com.ballucontrol.local
+            adb logcat -d -v brief > qa-v13/logcat.txt
+            ! grep -q "FATAL EXCEPTION" qa-v13/logcat.txt
+      - name: Upload screen captures for review
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: BookinHome-v1.3-signed-emulator-screens
+          path: qa-v13/
+          if-no-files-found: warn
