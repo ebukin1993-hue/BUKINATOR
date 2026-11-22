@@ -1,0 +1,103 @@
+name: Build BookinHome 1.1 visual fidelity APK
+on:
+  push:
+    branches: [bookinhome-visual-v11]
+    paths:
+      - '.github/workflows/bookinhome-visual-v11.yml'
+      - 'bookinhome/visual-v1.1-source.tar.xz.b64'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+      - name: Install SDK
+        shell: bash
+        run: |
+          SDKMAN="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager -print -quit)"
+          test -n "$SDKMAN"
+          yes | "$SDKMAN" --licenses >/dev/null || true
+          "$SDKMAN" "platforms;android-35" "build-tools;35.0.0"
+      - name: Unpack source
+        shell: bash
+        run: |
+          mkdir -p bookinhome/visual-project
+          cd bookinhome/visual-project
+          base64 -d ../visual-v1.1-source.tar.xz.b64 | tar -xJf -
+          test -f app/src/main/assets/bookinhome/index.html
+          test -f app/src/main/assets/bookinhome/style.css
+          test -f app/src/main/assets/bookinhome/app.js
+          test -f app/src/main/java/com/ballucontrol/local/SyncleoTransport.java
+          grep -q 'versionCode 11' app/build.gradle
+      - name: Validate visual assets and JavaScript
+        working-directory: bookinhome/visual-project
+        shell: bash
+        run: |
+          node --check app/src/main/assets/bookinhome/app.js
+          python3 - <<'PY'
+          from pathlib import Path
+          root=Path('app/src/main/assets/bookinhome')
+          html=(root/'index.html').read_text()
+          for tab in ('screen-home','screen-ballu','screen-stats','screen-alice','screen-whoop'):
+              assert tab in html, tab
+          for asset in ('house.jpg','ballu.webp','whoop.webp','whoop_large.webp','alice.webp','alice_large.webp'):
+              assert (root/'img'/asset).is_file(), asset
+          src=Path('app/src/main/java/com/ballucontrol/local/MainActivity.java').read_text()
+          assert 'new VisualBridge()' in src
+          assert 'new SyncleoTransport(this)' in src
+          assert 'new HistoryStore(this)' in src
+          print('Visual and native bridge checks OK')
+          PY
+      - name: Run protocol regression tests
+        working-directory: bookinhome/visual-project
+        shell: bash
+        run: |
+          mkdir -p /tmp/bookin-tests
+          javac -d /tmp/bookin-tests \
+            app/src/main/java/com/ballucontrol/local/SyncleoCrypto.java \
+            app/src/main/java/com/ballucontrol/local/SyncleoSession.java \
+            app/src/main/java/com/ballucontrol/local/BreezerState.java \
+            app/src/main/java/com/ballucontrol/local/Co2Policy.java \
+            app/src/main/java/com/ballucontrol/local/ShareTokenParser.java \
+            app/src/main/java/com/ballucontrol/local/WhoopMath.java \
+            app/src/test/java/com/ballucontrol/local/ProtocolSmokeTest.java \
+            app/src/test/java/com/ballucontrol/local/ShareTokenParserTest.java \
+            app/src/test/java/com/ballucontrol/local/WhoopMathTest.java
+          java -ea -cp /tmp/bookin-tests com.ballucontrol.local.ProtocolSmokeTest
+          java -ea -cp /tmp/bookin-tests com.ballucontrol.local.ShareTokenParserTest
+          java -ea -cp /tmp/bookin-tests com.ballucontrol.local.WhoopMathTest
+      - name: Compile BookinHome APK
+        working-directory: bookinhome/visual-project
+        shell: bash
+        run: gradle :app:assembleDebug --stacktrace --no-daemon
+      - name: Validate APK package and bundled design
+        shell: bash
+        run: |
+          APK=bookinhome/visual-project/app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          unzip -tq "$APK"
+          unzip -Z1 "$APK" | grep -q 'assets/bookinhome/index.html'
+          unzip -Z1 "$APK" | grep -q 'assets/bookinhome/style.css'
+          unzip -Z1 "$APK" | grep -q 'assets/bookinhome/img/house.jpg'
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | grep "application-label:'bookinhome'"
+          if "$ANDROID_HOME/build-tools/35.0.0/aapt" dump xmltree "$APK" AndroidManifest.xml | grep -E 'E: (service|receiver)'; then
+            echo 'Unexpected background component'; exit 1
+          fi
+      - name: Upload installable APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: BookinHome-visual-v1.1-APK
+          path: bookinhome/visual-project/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
