@@ -1,0 +1,82 @@
+name: Build bookinhome v1 Android APK
+on:
+  push:
+    branches: [bookinhome-v1-build]
+    paths:
+      - 'bookinhome/v1-source.tar.xz.b64'
+      - '.github/workflows/bookinhome-v1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+      - name: Install SDK
+        shell: bash
+        run: |
+          SDKMAN="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager -print -quit)"
+          test -n "$SDKMAN"
+          yes | "$SDKMAN" --licenses >/dev/null || true
+          "$SDKMAN" "platforms;android-35" "build-tools;35.0.0"
+      - name: Extract bookinhome source
+        shell: bash
+        run: |
+          mkdir -p bookinhome/project
+          cd bookinhome/project
+          base64 -d ../v1-source.tar.xz.b64 | tar -xJf -
+          test -f app/src/main/java/com/ballucontrol/local/WhoopBle.java
+          test -f app/src/main/java/com/ballucontrol/local/YandexHomeClient.java
+          test -f app/src/main/java/com/ballucontrol/local/HistoryStore.java
+          test -f app/src/main/res/drawable-nodpi/hero_house.jpg
+          grep -q "versionCode 10" app/build.gradle
+      - name: Run protocol, OAuth-free and WHOOP parser tests
+        working-directory: bookinhome/project
+        shell: bash
+        run: |
+          mkdir -p /tmp/bookinhome-tests
+          javac -d /tmp/bookinhome-tests \
+            app/src/main/java/com/ballucontrol/local/SyncleoCrypto.java \
+            app/src/main/java/com/ballucontrol/local/SyncleoSession.java \
+            app/src/main/java/com/ballucontrol/local/BreezerState.java \
+            app/src/main/java/com/ballucontrol/local/Co2Policy.java \
+            app/src/main/java/com/ballucontrol/local/ShareTokenParser.java \
+            app/src/main/java/com/ballucontrol/local/WhoopMath.java \
+            app/src/test/java/com/ballucontrol/local/ProtocolSmokeTest.java \
+            app/src/test/java/com/ballucontrol/local/ShareTokenParserTest.java \
+            app/src/test/java/com/ballucontrol/local/WhoopMathTest.java
+          java -ea -cp /tmp/bookinhome-tests com.ballucontrol.local.ProtocolSmokeTest
+          java -ea -cp /tmp/bookinhome-tests com.ballucontrol.local.ShareTokenParserTest
+          java -ea -cp /tmp/bookinhome-tests com.ballucontrol.local.WhoopMathTest
+      - name: Assemble signed debug APK
+        working-directory: bookinhome/project
+        shell: bash
+        run: gradle :app:assembleDebug --stacktrace --no-daemon
+      - name: Verify package and battery policy
+        shell: bash
+        run: |
+          APK=bookinhome/project/app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          unzip -tq "$APK" | tail -2
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | head -8
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | grep "application-label:'bookinhome'"
+          if "$ANDROID_HOME/build-tools/35.0.0/aapt" dump xmltree "$APK" AndroidManifest.xml | grep -E "E: (service|receiver)"; then
+            echo "Unexpected background component"; exit 1
+          fi
+      - name: Upload bookinhome APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: bookinhome-v1-debug-apk
+          path: bookinhome/project/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
