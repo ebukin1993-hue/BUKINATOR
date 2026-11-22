@@ -1,0 +1,34 @@
+name: Publish BookinHome APK for direct download
+on:
+  push:
+    branches: [bookinhome-visual-v11]
+    paths:
+      - '.github/workflows/bookinhome-download.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+  actions: read
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download verified APK artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: BookinHome-visual-v1.1.1-APK
+          repository: ebukin1993-hue/BUKINATOR
+          run-id: 45045155865
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: built
+      - name: Verify and publish
+        run: |
+          test -s built/app-debug.apk
+          mkdir -p downloads
+          cp built/app-debug.apk downloads/bookinhome-1.1.1.apk
+          sha256sum downloads/bookinhome-1.1.1.apk
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add downloads/bookinhome-1.1.1.apk
+          git commit -m "Publish BookinHome 1.1.1 APK" || exit 0
+          git push origin HEAD:bookinhome-visual-v11
