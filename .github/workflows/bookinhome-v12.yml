@@ -1,0 +1,108 @@
+name: Build BookinHome 1.2 Device Navigator APK
+on:
+  push:
+    branches: [bookinhome-navigation-v12]
+    paths:
+      - 'bookinhome/navigation-v1.2-source.tar.xz.b64'
+      - '.github/workflows/bookinhome-v12.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+      - name: Install Android SDK
+        shell: bash
+        run: |
+          SDKMAN="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager -print -quit)"
+          test -n "$SDKMAN"
+          yes | "$SDKMAN" --licenses >/dev/null || true
+          "$SDKMAN" "platforms;android-35" "build-tools;35.0.0"
+      - name: Extract project
+        shell: bash
+        run: |
+          mkdir -p bookinhome/v12-project
+          cd bookinhome/v12-project
+          base64 -d ../navigation-v1.2-source.tar.xz.b64 | tar -xJf -
+          grep -q 'versionCode 13' app/build.gradle
+          grep -q "versionName '1.2.0'" app/build.gradle
+      - name: Verify contextual navigation and scripts
+        shell: bash
+        working-directory: bookinhome/v12-project
+        run: |
+          node --check app/src/main/assets/bookinhome/app.js
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          root=Path('app/src/main/assets/bookinhome')
+          html=(root/'index.html').read_text()
+          css=(root/'style.css').read_text()
+          js=(root/'app.js').read_text()
+          main=html.split('<section id="screen-home"',1)[1].split('</section>',1)[0]
+          assert 'scene-grid' not in main
+          assert 'data-mode=' not in main
+          assert len(re.findall('class="device-tile',main))==3
+          assert len(re.findall('data-device-tab=',html))==3
+          assert '<nav class="bottom-nav nav-home"' in html
+          assert '<nav class="bottom-nav nav-device"' in html
+          assert '<section id="screen-device-settings"' in html
+          assert '<section id="screen-device-stats"' in html
+          assert "function back()" in js
+          assert "function openDevice(" in js
+          assert "[hidden]{display:none!important}" in css
+          assert 'SyncleoTransport' in Path('app/src/main/java/com/ballucontrol/local/MainActivity.java').read_text()
+          print('PASS: 1 home tab, 3 device tabs, 3 isolated devices, contextual settings and analytics')
+          PY
+      - name: Verify device protocol and import tests
+        shell: bash
+        working-directory: bookinhome/v12-project
+        run: |
+          mkdir -p /tmp/bookin-tests
+          javac -d /tmp/bookin-tests \
+            app/src/main/java/com/ballucontrol/local/SyncleoCrypto.java \
+            app/src/main/java/com/ballucontrol/local/SyncleoSession.java \
+            app/src/main/java/com/ballucontrol/local/BreezerState.java \
+            app/src/main/java/com/ballucontrol/local/Co2Policy.java \
+            app/src/main/java/com/ballucontrol/local/ShareTokenParser.java \
+            app/src/main/java/com/ballucontrol/local/WhoopMath.java \
+            app/src/test/java/com/ballucontrol/local/ProtocolSmokeTest.java \
+            app/src/test/java/com/ballucontrol/local/ShareTokenParserTest.java \
+            app/src/test/java/com/ballucontrol/local/WhoopMathTest.java
+          java -ea -cp /tmp/bookin-tests com.ballucontrol.local.ProtocolSmokeTest
+          java -ea -cp /tmp/bookin-tests com.ballucontrol.local.ShareTokenParserTest
+          java -ea -cp /tmp/bookin-tests com.ballucontrol.local.WhoopMathTest
+      - name: Compile signed debug APK
+        shell: bash
+        working-directory: bookinhome/v12-project
+        run: gradle :app:assembleDebug --no-daemon
+      - name: Inspect APK and battery policy
+        shell: bash
+        run: |
+          APK=bookinhome/v12-project/app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          unzip -tq "$APK" | tail -3
+          unzip -Z1 "$APK" | grep -q 'assets/bookinhome/index.html'
+          unzip -Z1 "$APK" | grep -q 'assets/bookinhome/style.css'
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | grep "application-label:'bookinhome'"
+          if "$ANDROID_HOME/build-tools/35.0.0/aapt" dump xmltree "$APK" AndroidManifest.xml | grep -E 'E: (service|receiver)'; then
+            echo 'Unexpected background service/receiver'
+            exit 1
+          fi
+          sha256sum "$APK"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bookinhome-v1.2-APK
+          path: bookinhome/v12-project/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
