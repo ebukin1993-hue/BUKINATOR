@@ -1,0 +1,74 @@
+name: Build BookinHome 1.1.1 final Android APK
+on:
+  push:
+    branches: [bookinhome-visual-v11]
+    paths:
+      - 'bookinhome/visual-v1.1.1-source.tar.xz.b64'
+      - '.github/workflows/bookinhome-visual-v111.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  final-android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+      - name: Prepare SDK
+        shell: bash
+        run: |
+          SDKMAN="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager -print -quit)"
+          test -n "$SDKMAN"
+          yes | "$SDKMAN" --licenses >/dev/null || true
+          "$SDKMAN" "platforms;android-35" "build-tools;35.0.0"
+      - name: Extract final bookinhome source
+        run: |
+          mkdir -p bookinhome/visual-final
+          cd bookinhome/visual-final
+          base64 -d ../visual-v1.1.1-source.tar.xz.b64 | tar -xJf -
+          grep -q "versionCode 12" app/build.gradle
+          grep -q '.home-topbar{top:44px}' app/src/main/assets/bookinhome/style.css
+          test -f app/src/main/assets/bookinhome/img/house.jpg
+      - name: Run tests
+        working-directory: bookinhome/visual-final
+        run: |
+          node --check app/src/main/assets/bookinhome/app.js
+          mkdir -p /tmp/ballu-protocol-tests
+          javac -d /tmp/ballu-protocol-tests \
+            app/src/main/java/com/ballucontrol/local/SyncleoCrypto.java \
+            app/src/main/java/com/ballucontrol/local/SyncleoSession.java \
+            app/src/main/java/com/ballucontrol/local/BreezerState.java \
+            app/src/main/java/com/ballucontrol/local/Co2Policy.java \
+            app/src/main/java/com/ballucontrol/local/ShareTokenParser.java \
+            app/src/main/java/com/ballucontrol/local/WhoopMath.java \
+            app/src/test/java/com/ballucontrol/local/ProtocolSmokeTest.java \
+            app/src/test/java/com/ballucontrol/local/ShareTokenParserTest.java \
+            app/src/test/java/com/ballucontrol/local/WhoopMathTest.java
+          java -ea -cp /tmp/ballu-protocol-tests com.ballucontrol.local.ProtocolSmokeTest
+          java -ea -cp /tmp/ballu-protocol-tests com.ballucontrol.local.ShareTokenParserTest
+          java -ea -cp /tmp/ballu-protocol-tests com.ballucontrol.local.WhoopMathTest
+      - name: Compile APK
+        working-directory: bookinhome/visual-final
+        run: gradle :app:assembleDebug --no-daemon
+      - name: Verify APK
+        shell: bash
+        run: |
+          APK=bookinhome/visual-final/app/build/outputs/apk/debug/app-debug.apk
+          unzip -tq "$APK"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | grep -E "package: name=|application-label:'bookinhome'"
+          unzip -Z1 "$APK" | grep -q 'assets/bookinhome/img/house.jpg'
+          if "$ANDROID_HOME/build-tools/35.0.0/aapt" dump xmltree "$APK" AndroidManifest.xml | grep -E 'E: (service|receiver)'; then exit 1; fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BookinHome-visual-v1.1.1-APK
+          path: bookinhome/visual-final/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
