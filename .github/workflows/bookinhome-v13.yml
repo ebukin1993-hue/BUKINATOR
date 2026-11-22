@@ -1,0 +1,115 @@
+name: Build BookinHome 1.3 Design and Analytics
+on:
+  push:
+    branches: [bookinhome-design-v13]
+    paths:
+      - 'bookinhome/v1.3-source.tar.xz.b64'
+      - '.github/workflows/bookinhome-v13.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+      - name: Install Android 35
+        shell: bash
+        run: |
+          SDKMAN="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager -print -quit)"
+          test -n "$SDKMAN"
+          yes | "$SDKMAN" --licenses >/dev/null || true
+          "$SDKMAN" "platforms;android-35" "build-tools;35.0.0"
+      - name: Extract BookinHome v1.3
+        shell: bash
+        run: |
+          mkdir -p bookinhome/v13
+          cd bookinhome/v13
+          base64 -d ../v1.3-source.tar.xz.b64 | tar -xJf -
+          grep -q "versionCode 14" app/build.gradle
+          grep -q "versionName '1.3.0'" app/build.gradle
+          test -s app/src/main/java/com/ballucontrol/local/VentilationStats.java
+          test -s app/src/main/java/com/ballucontrol/local/LocalBackup.java
+      - name: Test JavaScript and UX source
+        shell: bash
+        working-directory: bookinhome/v13
+        run: |
+          node --check app/src/main/assets/bookinhome/app.js
+          python3 - <<'PY'
+          from pathlib import Path
+          html=Path('app/src/main/assets/bookinhome/index.html').read_text()
+          js=Path('app/src/main/assets/bookinhome/app.js').read_text()
+          css=Path('app/src/main/assets/bookinhome/style.css').read_text()
+          assert 'data-chart="3"' in html
+          assert 'id="exposure-percent"' in html
+          assert 'id="efficiency-content"' in html
+          assert 'data-action="exportBackup"' in html
+          assert 'data-action="restoreBackup"' in html
+          assert 'data-action="appSettings"' in html
+          assert 'function plotDomain(history)' in js
+          assert 'reduced-motion' in css
+          assert '[hidden]{display:none!important}' in css
+          for section in ('screen-home','screen-ballu','screen-stats','screen-alice','screen-whoop','screen-device-settings'):
+              assert section in html
+          print('BookinHome 1.3 visual and navigation source checks: PASS')
+          PY
+      - name: Run protocol and honest-analytics regression tests
+        shell: bash
+        working-directory: bookinhome/v13
+        run: |
+          mkdir -p /tmp/bookin-v13-tests
+          javac -d /tmp/bookin-v13-tests \
+            app/src/main/java/com/ballucontrol/local/SyncleoCrypto.java \
+            app/src/main/java/com/ballucontrol/local/SyncleoSession.java \
+            app/src/main/java/com/ballucontrol/local/BreezerState.java \
+            app/src/main/java/com/ballucontrol/local/Co2Policy.java \
+            app/src/main/java/com/ballucontrol/local/ShareTokenParser.java \
+            app/src/main/java/com/ballucontrol/local/WhoopMath.java \
+            app/src/main/java/com/ballucontrol/local/VentilationStats.java \
+            app/src/test/java/com/ballucontrol/local/ProtocolSmokeTest.java \
+            app/src/test/java/com/ballucontrol/local/ShareTokenParserTest.java \
+            app/src/test/java/com/ballucontrol/local/WhoopMathTest.java \
+            VentilationStatsTest.java
+          java -ea -cp /tmp/bookin-v13-tests com.ballucontrol.local.ProtocolSmokeTest
+          java -ea -cp /tmp/bookin-v13-tests com.ballucontrol.local.ShareTokenParserTest
+          java -ea -cp /tmp/bookin-v13-tests com.ballucontrol.local.WhoopMathTest
+          java -ea -cp /tmp/bookin-v13-tests com.ballucontrol.local.VentilationStatsTest
+      - name: Build APK
+        shell: bash
+        working-directory: bookinhome/v13
+        run: gradle :app:assembleDebug --stacktrace --no-daemon
+      - name: Verify APK, package, data privacy and battery policy
+        shell: bash
+        run: |
+          APK=bookinhome/v13/app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          unzip -tq "$APK" | tail -2
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | grep -E 'package: name=|application-label:'
+          unzip -Z1 "$APK" | grep -q 'assets/bookinhome/app.js'
+          unzip -Z1 "$APK" | grep -q 'assets/bookinhome/style.css'
+          if "$ANDROID_HOME/build-tools/35.0.0/aapt" dump xmltree "$APK" AndroidManifest.xml | grep -E 'E: (service|receiver)'; then
+            echo 'Unexpected background receiver/service'; exit 1
+          fi
+          sha256sum "$APK"
+      - name: Upload debug APK to re-sign privately
+        uses: actions/upload-artifact@v4
+        with:
+          name: bookinhome-v1.3-unsigned-base
+          path: bookinhome/v13/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+      - name: Upload signing tool for private local signing
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-apksigner-internal
+          path: /usr/local/lib/android/sdk/build-tools/35.0.0/lib/apksigner.jar
+          if-no-files-found: error
